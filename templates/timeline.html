@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Timeline generale{% endblock %}
+
+{% block content %}
+
+<h2 class="mb-4">Timeline generale</h2>
+
+{% if project_start is none %}
+    <div class="alert alert-warning">
+        Lo SPONSOR non ha ancora impostato la data di inizio progetto.
+    </div>
+{% else %}
+
+<!-- FILTRO PER FUNZIONE AZIENDALE -->
+<form method="get" class="mb-4">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label">Filtra per funzione</label>
+            <select name="function" class="form-select">
+                <option value="">Tutte</option>
+                {% for f in functions_list %}
+                    <option value="{{ f }}" {% if selected_function == f %}selected{% endif %}>
+                        {{ f }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <button class="btn btn-primary w-100">Filtra</button>
+        </div>
+
+        <div class="col-md-2">
+            <a href="{{ url_for('timeline') }}" class="btn btn-secondary w-100">Reset</a>
+        </div>
+    </div>
+</form>
+
+<p class="text-muted mb-4">
+    Data inizio progetto: <strong>{{ project_start.strftime('%d/%m/%Y') }}</strong>
+</p>
+
+<!-- TABELLA TIMELINE -->
+<table class="table table-bordered table-striped align-middle">
+    <thead class="table-dark">
+        <tr>
+            <th>Funzione</th>
+            <th>Attività</th>
+            <th>Durata</th>
+            <th>Inizio</th>
+            <th>Fine</th>
+            <th>Stato</th>
+        </tr>
+    </thead>
+
+    <tbody>
+    {% for t in tasks %}
+        <tr>
+            <td>{{ t.function }}</td>
+            <td>{{ t.task }}</td>
+            <td>{{ t.days }} giorni</td>
+            <td>{{ t.start_date.strftime('%d/%m/%Y') }}</td>
+            <td>{{ t.end_date.strftime('%d/%m/%Y') }}</td>
+
+            <!-- STATO CON COLORI -->
+            <td>
+                {% if t.status == 'completata' %}
+                    <span class="badge bg-success">Completata</span>
+                {% elif t.status == 'in_corso' %}
+                    <span class="badge bg-warning text-dark">In corso</span>
+                {% elif t.status == 'in_ritardo' %}
+                    <span class="badge bg-danger">In ritardo</span>
+                {% elif t.status == 'non_iniziata' %}
+                    <span class="badge bg-secondary">Non iniziata</span>
+                {% else %}
+                    <span class="badge bg-light text-muted border">N/D</span>
+                {% endif %}
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% endif %}
+
+{% endblock %}

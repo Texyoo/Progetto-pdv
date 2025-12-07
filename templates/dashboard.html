@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h2 class="mb-3">Dashboard</h2>
+
+{# BLOCCO ATTIVITÀ DI OGGI / PROSSIMA ATTIVITÀ #}
+{% if attivita_oggi %}
+<div class="alert alert-info shadow-sm p-3 mb-4">
+    <h5 class="mb-2">📅 Attività di oggi ({{ attivita_oggi|length }})</h5>
+    <ul class="mb-0">
+        {% for a in attivita_oggi %}
+        <li>
+            <strong>{{ a.task }}</strong>
+            <span class="badge bg-primary text-white">
+                {% if a.status == "in_corso" %}In corso
+                {% elif a.status == "non_iniziata" %}Da iniziare
+                {% elif a.status == "completata" %}Completata
+                {% endif %}
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% else %}
+<div class="alert alert-secondary shadow-sm p-3 mb-4">
+    <h5 class="mb-2">📅 Nessuna attività oggi</h5>
+    {% if prossima_data %}
+    La prossima attività è prevista il
+    <strong>{{ prossima_data.strftime('%d/%m/%Y') }}</strong>.
+    {% else %}
+    Non ci sono più attività future.
+    {% endif %}
+</div>
+{% endif %}
+
+<p class="mb-2">
+    Ciao <strong>{{ full_name }}</strong>!<br>
+    Sei associato alla funzione aziendale:
+    <strong>{{ function_name }}</strong>.
+</p>
+
+{% if is_sponsor %}
+    <div class="card mb-4">
+        <div class="card-header">
+            Impostazione data inizio progetto (solo SPONSOR)
+        </div>
+        <div class="card-body">
+            <form method="post" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Data inizio progetto</label>
+                    <input type="date" name="project_start" class="form-control"
+                           value="{{ project_start.strftime('%Y-%m-%d') if project_start }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary">
+                        Salva data
+                    </button>
+                </div>
+            </form>
+            {% if not project_start %}
+                <p class="text-muted mt-3">
+                    Nessuna data impostata. Fino a quando non imposti una data, le altre funzioni non vedranno il piano.
+                </p>
+            {% endif %}
+        </div>
+    </div>
+{% else %}
+    {% if not project_start %}
+        <div class="alert alert-warning">
+            In attesa che la funzione <strong>SPONSOR</strong> definisca la data di inizio progetto.
+        </div>
+    {% endif %}
+{% endif %}
+
+{% if project_start %}
+    <p class="text-muted mb-4">
+        Data di inizio progetto: <strong>{{ project_start.strftime('%d/%m/%Y') }}</strong>
+    </p>
+
+    <h4 class="mb-3">Attività della tua funzione</h4>
+    {% if tasks %}
+        <table class="table table-striped align-middle">
+            <thead>
+            <tr>
+                <th>Attività</th>
+                <th>Durata (giorni)</th>
+                <th>Inizio</th>
+                <th>Fine</th>
+                <th>Stato</th>
+                <th>Azione</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for t in tasks %}
+                <tr>
+                    <td>{{ t.task }}</td>
+                    <td>{{ t.days }}</td>
+                    <td>{{ t.start_date.strftime('%d/%m/%Y') }}</td>
+                    <td>{{ t.end_date.strftime('%d/%m/%Y') }}</td>
+                    <td>
+                        {% set stato = t.status %}
+                        <span class="badge text-white badge-stato
+                            {% if stato == 'completata' %} stato-completata
+                            {% elif stato == 'in_corso' %} stato-in_corso
+                            {% elif stato == 'non_iniziata' %} stato-non_iniziata
+                            {% elif stato == 'in_ritardo' %} stato-in_ritardo
+                            {% endif %}
+                        ">
+                            {% if stato == 'completata' %}
+                                Completata
+                            {% elif stato == 'in_corso' %}
+                                In corso
+                            {% elif stato == 'non_iniziata' %}
+                                Non iniziata
+                            {% elif stato == 'in_ritardo' %}
+                                In ritardo
+                            {% endif %}
+                        </span>
+                    </td>
+
+                    <td>
+                        <form method="post" action="{{ url_for('toggle_task') }}">
+                            <input type="hidden" name="task_id" value="{{ t.id }}">
+                            {% set stato = t.status %}
+                            {% if t.completed %}
+                                <button type="submit" class="btn btn-sm btn-success">
+                                    ✔ Completata
+                                </button>
+                            {% elif stato == 'non_iniziata' %}
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    Flagga attività iniziata
+                                </button>
+                            {% elif stato == 'in_corso' %}
+                                <button type="submit" class="btn btn-sm btn-warning">
+                                    Segna completata
+                                </button>
+                            {% endif %}
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="text-muted">Per questa funzione aziendale non ci sono attività nel Gantt.</p>
+    {% endif %}
+
+    <hr class="my-4">
+
+    <h4 class="mb-3">Calendario giornaliero (solo tua funzione)</h4>
+    {% if calendario %}
+        <table class="table table-bordered">
+            <thead>
+            <tr>
+                <th>Giorno</th>
+                <th>Attività da svolgere</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for g in calendario %}
+                <tr>
+                    <td style="width: 160px;">{{ g.date.strftime('%d/%m/%Y') }}</td>
+                    <td>
+                        <ul class="mb-0">
+                            {% for att in g.tasks %}
+                                {% set stato = att.status %}
+                                <li>
+                                    {{ att.task }}
+                                    <span class="badge text-white badge-stato
+                                    {% if stato == 'completata' %} stato-completata
+                                    {% elif stato == 'in_corso' %} stato-in_corso
+                                    {% elif stato == 'non_iniziata' %} stato-non_iniziata
+                                    {% elif stato == 'in_ritardo' %} stato-in_ritardo
+                                    {% endif %}
+                                ">
+                                    {% if stato == 'completata' %}
+                                        Completata
+                                    {% elif stato == 'in_corso' %}
+                                        In corso
+                                    {% elif stato == 'non_iniziata' %}
+                                        Non iniziata
+                                    {% elif stato == 'in_ritardo' %}
+                                        In ritardo
+                                    {% endif %}
+                                </span>
+
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="text-muted">Nessuna attività pianificata per la tua funzione.</p>
+    {% endif %}
+{% endif %}
+{% endblock %}

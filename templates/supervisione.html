@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Supervisione progetto{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Supervisione progetto</h2>
+
+{% if not project_start %}
+<div class="alert alert-warning">
+    La data di inizio progetto non è stata impostata dallo Sponsor.
+</div>
+{% else %}
+
+<div class="row">
+    <div class="col-md-7 mb-4">
+        <div id="calendar"></div>
+    </div>
+
+    <div class="col-md-5 mb-4">
+        <h4 class="mb-3">Attività del giorno</h4>
+        <div id="event-details" class="border rounded p-3" style="min-height: 220px;">
+            <p class="text-muted mb-0">Clicca un giorno nel calendario per vedere le attività previste.</p>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js"></script>
+
+<!--  🔥 Disattiva il controllo JS del linter per questo blocco -->
+<!-- prettier-ignore -->
+<!-- eslint-disable -->
+<!-- jshint ignore:start -->
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    // ===== COSTRUZIONE EVENTI DAL BACKEND =====
+    const events = [
+        {% for t in tasks %}
+        {
+            id: "{{ t.id }}",
+            title: {{ t.title | tojson }},
+            start: "{{ t.start_str }}",
+            end: "{{ t.end_str }}",
+            color: "{{ t.color }}",
+            extendedProps: {
+                function_name: {{ t.function | tojson }},
+                days: "{{ t.days }}",
+                status: "{{ t.status }}"
+            }
+        },
+        {% endfor %}
+    ];
+
+    const calendarEl = document.getElementById('calendar');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'it',
+        height: 650,
+        events: events,
+
+        eventClick: function (info) {
+            showEventDetails([info.event]);
+        },
+        dateClick: function (info) {
+            showEventsForDate(info.dateStr);
+        }
+    });
+
+    calendar.render();
+
+    // ====== FUNZIONI DI RENDERING DETTAGLI ======
+
+    function showEventsForDate(dateStr) {
+        const selected = events.filter(ev => {
+            return dateStr >= ev.start && dateStr < ev.end;
+        });
+        showEventDetails(selected, dateStr);
+    }
+
+    function showEventDetails(eventArray, dateStr=null) {
+        const container = document.getElementById('event-details');
+
+        if (!eventArray || eventArray.length === 0) {
+            let label = dateStr ? formatDateLabel(dateStr) : "questa data";
+            container.innerHTML = `<p class="text-muted">Nessuna attività prevista per ${label}.</p>`;
+            return;
+        }
+
+        let html = "";
+        if (dateStr) {
+            html += `<p><strong>Data: ${formatDateLabel(dateStr)}</strong></p>`;
+        }
+
+        eventArray.forEach(ev => {
+            html += `
+                <div class="mb-3 p-2 border rounded">
+                    <strong>${ev.title}</strong><br>
+                    <small class="text-muted">
+                        Funzione: ${ev.extendedProps.function_name}<br>
+                        Durata: ${ev.extendedProps.days} giorni
+                    </small>
+                    <div class="mt-1">
+                        Stato: ${formatStatus(ev.extendedProps.status)}
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function formatStatus(s) {
+        if (s === "completata") return "<span class='badge bg-success'>Completata</span>";
+        if (s === "in_corso") return "<span class='badge bg-warning text-dark'>In corso</span>";
+        if (s === "in_ritardo") return "<span class='badge bg-danger'>In ritardo</span>";
+        return "<span class='badge bg-secondary'>Non iniziata</span>";
+    }
+
+    function formatDateLabel(dateStr) {
+        const p = dateStr.split("-");
+        return `${p[2]}/${p[1]}/${p[0]}`;
+    }
+});
+</script>
+
+<!-- jshint ignore:end -->
+<!-- eslint-enable -->
+
+{% endif %}
+{% endblock %}

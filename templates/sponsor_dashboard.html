@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Supervisione progetto{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Supervisione progetto</h2>
+
+{% if not project_start %}
+<div class="alert alert-warning">
+    Lo SPONSOR non ha ancora impostato la data di inizio progetto.
+</div>
+{% else %}
+
+<!-- =================== KPI GLOBALI =================== -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Attività totali</h6>
+                <h3>{{ kpis.total }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Completate</h6>
+                <h3 class="text-success">{{ kpis.completed }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="text-muted">In corso</h6>
+                <h3 class="text-warning">{{ kpis.in_progress }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="text-muted">Non iniziate</h6>
+                <h3 class="text-secondary">{{ kpis.not_started }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Avanzamento globale -->
+<div class="mb-4">
+    <h6 class="mb-1">Avanzamento complessivo</h6>
+    <div class="progress" style="height: 20px;">
+        <div class="progress-bar" role="progressbar"
+             style="width: {{ kpis.progress }}%;"
+             aria-valuenow="{{ kpis.progress }}" aria-valuemin="0" aria-valuemax="100">
+            {{ kpis.progress }}%
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- =================== CALENDARIO PROGETTO =================== -->
+    <div class="col-md-5 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                Calendario progetto
+            </div>
+            <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+
+                <p class="text-muted">
+                    Dal <strong>{{ project_start.strftime('%d/%m/%Y') }}</strong>
+                    al <strong>{{ project_end.strftime('%d/%m/%Y') }}</strong>
+                </p>
+
+                <div class="mb-2">
+                    <span class="badge bg-success me-1">Completata</span>
+                    <span class="badge bg-warning text-dark me-1">In corso</span>
+                    <span class="badge bg-danger me-1">In ritardo</span>
+                    <span class="badge bg-secondary me-1">Non iniziata</span>
+                    <span class="badge bg-light text-muted border">Vuoto</span>
+                </div>
+
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">Data</th>
+                            <th>Stato</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in days %}
+                        {% set is_selected = (d.date == selected_date) %}
+                        <tr class="{% if is_selected %}table-primary{% endif %}">
+                            <td>
+                                <a href="{{ url_for('dashboard_supervisione', date=d.date.strftime('%Y-%m-%d')) }}"
+                                   class="text-decoration-none {% if is_selected %}fw-bold{% endif %}">
+                                    {{ d.date.strftime('%d/%m/%Y') }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if d.status == 'completata' %}
+                                    <span class="badge bg-success">Completata</span>
+                                {% elif d.status == 'in_corso' %}
+                                    <span class="badge bg-warning text-dark">In corso</span>
+                                {% elif d.status == 'in_ritardo' %}
+                                    <span class="badge bg-danger">In ritardo</span>
+                                {% elif d.status == 'non_iniziata' %}
+                                    <span class="badge bg-secondary">Non iniziata</span>
+                                {% else %}
+                                    <span class="badge bg-light text-muted border">Nessuna attività</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- =================== ATTIVITÀ DEL GIORNO SELEZIONATO =================== -->
+    <div class="col-md-7 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                Attività del giorno:
+                <strong>{{ selected_date.strftime('%d/%m/%Y') }}</strong>
+            </div>
+            <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                {% if activities_for_selected and activities_for_selected|length > 0 %}
+                    {% for t in activities_for_selected %}
+                    <div class="mb-3 p-3 border rounded">
+                        <h5 class="mb-1">{{ t.task }}</h5>
+                        <p class="mb-1">
+                            <small class="text-muted">
+                                Funzione: <strong>{{ t.function }}</strong><br>
+                                Responsabile: <strong>{{ t.responsabile or "Nessuno" }}</strong><br>
+                                {% if t.responsabili and t.responsabili|length > 0 %}
+                                Responsabile/i:
+                                {{ t.responsabili | join(', ') }}<br>
+                                {% else %}
+                                Responsabile:
+                                <span class="text-muted">non assegnato</span><br>
+                                {% endif %}
+                                
+                                Durata: {{ t.days }} giorni<br>
+                                Dal {{ t.start_date.strftime('%d/%m/%Y') }}
+                                al {{ t.end_date.strftime('%d/%m/%Y') }}
+                            </small>
+                        </p>
+                        <p class="mb-0">
+                            Stato:
+                            {% if t.status == 'completata' %}
+                                <span class="badge bg-success">Completata</span>
+                            {% elif t.status == 'in_corso' %}
+                                <span class="badge bg-warning text-dark">In corso</span>
+                            {% elif t.status == 'in_ritardo' %}
+                                <span class="badge bg-danger">In ritardo</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Non iniziata</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted mb-0">
+                        Nessuna attività prevista per questo giorno.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}

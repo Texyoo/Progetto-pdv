@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Gestione utenti{% endblock %}
+
+{% block content %}
+
+<h2 class="mb-4">Gestione utenti</h2>
+
+<div class="d-flex justify-content-between mb-3">
+    <h5>Utenti registrati</h5>
+
+    <!-- Toggle self-registration -->
+    <form method="post" action="{{ url_for('toggle_registration') }}">
+        <button class="btn btn-sm {% if self_registration_enabled %}btn-success{% else %}btn-secondary{% endif %}">
+            Registrazione libera:
+            {% if self_registration_enabled %}ON{% else %}OFF{% endif %}
+        </button>
+    </form>
+</div>
+
+<!-- Bottone per aprire il form di creazione -->
+<button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#createUserModal">
+    ➕ Crea nuovo utente
+</button>
+
+
+<!-- =============== MODAL: CREA NUOVO UTENTE ================= -->
+<div class="modal fade" id="createUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <form method="post" action="{{ url_for('admin_create_user') }}">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Crea nuovo utente</h5>
+                    <button class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+
+                    <div class="mb-3">
+                        <label class="form-label">Nome completo</label>
+                        <input name="full_name" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input name="email" type="email" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input name="password" type="password" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Conferma password</label>
+                        <input name="confirm" type="password" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Ruolo</label>
+                        <select name="role" class="form-select" required>
+                            <option value="USER">User</option>
+                            <option value="SPONSOR">Sponsor</option>
+                            <option value="AREA_MANAGER">Capo Area</option>
+                            <option value="ADMIN">Admin</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Funzione aziendale</label>
+                        <select name="function_name" class="form-select">
+                            <option value="">- nessuna -</option>
+                            {% for f in funzioni %}
+                                <option value="{{ f }}">{{ f }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-primary">Crea utente</button>
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+</div>
+
+
+
+<!-- =============== TABELLA UTENTI ================= -->
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Nome</th>
+            <th>Email</th>
+            <th>Ruolo</th>
+            <th>Funzione aziendale</th>
+            <th>Creato il</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.full_name }}</td>
+            <td>{{ u.email }}</td>
+            <td>{{ u.role }}</td>
+            <td>{{ u.function_name or "-" }}</td>
+            <td>{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+            <td>
+
+                <!-- Pulsante Modifica -->
+                <button class="btn btn-sm btn-warning"
+                        data-bs-toggle="modal"
+                        data-bs-target="#editUserModal"
+                        data-id="{{ u.id }}"
+                        data-fullname="{{ u.full_name }}"
+                        data-email="{{ u.email }}"
+                        data-role="{{ u.role }}"
+                        data-function="{{ u.function_name }}">
+                    ✏ Modifica
+                </button>
+
+                <!-- Pulsante Elimina -->
+                <button class="btn btn-sm btn-danger"
+                        data-bs-toggle="modal"
+                        data-bs-target="#deleteUserModal"
+                        data-id="{{ u.id }}"
+                        data-name="{{ u.full_name }}">
+                    ❌ Elimina
+                </button>
+
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+
+
+<!-- =============== MODAL: MODIFICA UTENTE ================= -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <form method="post" id="editUserForm">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Modifica utente</h5>
+                    <button class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <input type="hidden" name="user_id" id="edit_user_id">
+
+                    <div class="mb-3">
+                        <label class="form-label">Nome completo</label>
+                        <input name="full_name" id="edit_full_name" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input name="email" id="edit_email" type="email" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Ruolo</label>
+                        <select name="role" id="edit_role" class="form-select">
+                            <option value="USER">User</option>
+                            <option value="SPONSOR">Sponsor</option>
+                            <option value="AREA_MANAGER">Capo Area</option>
+                            <option value="ADMIN">Admin</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Funzione aziendale</label>
+                        <select name="function_name" id="edit_function" class="form-select">
+                            <option value="">- nessuna -</option>
+                            {% for f in funzioni %}
+                                <option value="{{ f }}">{{ f }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-success">Salva modifiche</button>
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+</div>
+
+
+
+<!-- =============== MODAL: ELIMINA UTENTE ================= -->
+<div class="modal fade" id="deleteUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <form method="post" id="deleteUserForm">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Elimina utente</h5>
+                    <button class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <p>Vuoi davvero eliminare <strong id="delete_user_name"></strong>?</p>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-danger">Elimina</button>
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+</div>
+
+
+
+<script>
+    // ---- MODAL MODIFICA ----
+    document.getElementById("editUserModal").addEventListener("show.bs.modal", function (event) {
+        let button = event.relatedTarget;
+
+        let id = button.getAttribute("data-id");
+        let full = button.getAttribute("data-fullname");
+        let mail = button.getAttribute("data-email");
+        let role = button.getAttribute("data-role");
+        let func = button.getAttribute("data-function");
+
+        document.getElementById("edit_user_id").value = id;
+        document.getElementById("edit_full_name").value = full;
+        document.getElementById("edit_email").value = mail;
+        document.getElementById("edit_role").value = role;
+        document.getElementById("edit_function").value = func;
+
+        document.getElementById("editUserForm").action = "/admin/update_user/" + id;
+    });
+
+    // ---- MODAL ELIMINA ----
+    document.getElementById("deleteUserModal").addEventListener("show.bs.modal", function (event) {
+        let button = event.relatedTarget;
+
+        let id = button.getAttribute("data-id");
+        let full = button.getAttribute("data-name");
+
+        document.getElementById("delete_user_name").textContent = full;
+        document.getElementById("deleteUserForm").action = "/admin/delete_user/" + id;
+    });
+</script>
+
+{% endblock %}

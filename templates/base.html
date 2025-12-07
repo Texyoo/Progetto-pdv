@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}App Premium{% endblock %}</title>
+
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+
+    <style>
+        /* Layout per footer sempre in basso */
+        html, body {
+            height: 100%;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+        .page-container {
+            flex: 1;
+        }
+
+        /* Badge di stato comuni in tutta l'app */
+        .badge-stato {
+            border-radius: 999px;
+            font-size: 0.75rem;
+            padding: 0.35em 0.6em;
+        }
+
+        .stato-completata {
+            background-color: #198754; /* verde */
+            color: #ffffff;
+        }
+
+        .stato-in_corso {
+            background-color: #ffc107; /* giallo */
+            color: #212529; /* testo scuro, leggibile */
+        }
+
+        .stato-non_iniziata {
+            background-color: #6c757d; /* grigio */
+            color: #ffffff;
+        }
+
+        .stato-in_ritardo {
+            background-color: #dc3545; /* rosso */
+            color: #ffffff;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="page-container">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                🚀 Progetto PDV
+            </a>
+
+            {% if current_user.is_authenticated %}
+            <div class="d-flex">
+
+                {% if current_user.is_admin %}
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-outline-light btn-sm me-2">
+                        Gestione utenti
+                    </a>
+                {% endif %}
+
+                {% if current_user.is_authenticated and (current_user.is_sponsor or current_user.role == 'AREA_MANAGER') %}
+                    <a href="{{ url_for('dashboard_supervisione') }}" class="btn btn-outline-light btn-sm me-2">
+                        Supervisione progetto
+                    </a>
+                {% endif %}
+
+                <a href="{{ url_for('timeline') }}" class="btn btn-outline-light btn-sm me-2">
+                    Timeline generale
+                </a>
+
+                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-light btn-sm me-2">
+                    Le tue attività
+                </a>
+
+                <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm">
+                    Logout
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="container mb-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mt-2">
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+</div>
+
+<footer class="footer bg-dark text-light py-2 mt-4">
+    <div class="container text-center">
+        <small>Realizzato da <strong>Alessandro Camera</strong></small>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
