@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Supervisione progetto{% endblock %}
+{% block title %}Supervisione apertura punto vendita{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Supervisione progetto</h2>
+<h2 class="mb-4">Supervisione apertura punto vendita</h2>
 
 {% if not project_start %}
 <div class="alert alert-warning">
-    Lo SPONSOR non ha ancora impostato la data di inizio progetto.
+    Lo SPONSOR non ha ancora impostato la data di apertura del punto vendita.
 </div>
 {% else %}
 
@@ -59,17 +59,20 @@
 </div>
 
 <div class="row">
-    <!-- =================== CALENDARIO PROGETTO =================== -->
+    <!-- =================== CALENDARIO =================== -->
     <div class="col-md-5 mb-4">
         <div class="card h-100">
             <div class="card-header">
-                Calendario progetto
+                Calendario attività
             </div>
             <div class="card-body" style="max-height: 600px; overflow-y: auto;">
 
                 <p class="text-muted">
-                    Dal <strong>{{ project_start.strftime('%d/%m/%Y') }}</strong>
-                    al <strong>{{ project_end.strftime('%d/%m/%Y') }}</strong>
+                    Inizio attività (calcolato):
+                    <strong>{{ project_start.strftime('%d/%m/%Y') }}</strong>
+                    <br>
+                    Data apertura punto vendita:
+                    <strong>{{ project_end.strftime('%d/%m/%Y') }}</strong>
                 </p>
 
                 <div class="mb-2">
@@ -135,14 +138,6 @@
                             <small class="text-muted">
                                 Funzione: <strong>{{ t.function }}</strong><br>
                                 Responsabile: <strong>{{ t.responsabile or "Nessuno" }}</strong><br>
-                                {% if t.responsabili and t.responsabili|length > 0 %}
-                                Responsabile/i:
-                                {{ t.responsabili | join(', ') }}<br>
-                                {% else %}
-                                Responsabile:
-                                <span class="text-muted">non assegnato</span><br>
-                                {% endif %}
-                                
                                 Durata: {{ t.days }} giorni<br>
                                 Dal {{ t.start_date.strftime('%d/%m/%Y') }}
                                 al {{ t.end_date.strftime('%d/%m/%Y') }}

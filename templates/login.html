@@ -2,35 +2,180 @@
 {% block title %}Login{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-4">
 
-        <h3 class="mb-3">Accedi</h3>
+<style>
+  /* ===== Login full screen ===== */
+  body {
+    background: #000;
+  }
+  .navbar, footer {
+    display: none !important;
+  }
 
-        <form method="post">
+  .login-scene{
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
 
-            <div class="mb-3">
-                <label class="form-label">Email</label>
-                <input name="email" type="email" class="form-control" required>
-            </div>
+  .stage{
+    width: min(900px, 92vw);
+    text-align: center;
+  }
 
-            <div class="mb-3">
-                <label class="form-label">Password</label>
-                <input name="password" type="password" class="form-control" required>
-            </div>
+  /* ===== Logo ===== */
+  .logo-container{
+    margin-bottom: 18px;
+    opacity: 0;
+    transform: translateY(-12px);
+    animation: logoFade 1s ease forwards;
+  }
 
-            <button class="btn btn-primary w-100">Login</button>
+  .logo-container img{
+    width: min(360px, 80vw);
+    filter: drop-shadow(0 12px 24px rgba(0,0,0,.5));
+  }
 
-        </form>
+  @keyframes logoFade{
+    to{
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 
-        {% if self_registration_enabled %}
-        <div class="mt-3 text-center">
-            <a href="{{ url_for('register') }}" class="btn btn-outline-primary w-100">
-                Registrati
-            </a>
-        </div>
-        {% endif %}
+  /* ===== Titolo ===== */
+  .title{
+    color: #fff;
+    margin-bottom: 18px;
+    opacity: 0;
+    animation: textFade 0.8s ease forwards;
+    animation-delay: .4s;
+  }
 
+  @keyframes textFade{
+    to{ opacity: 1; }
+  }
+
+  .title p{
+    color: rgba(255,255,255,.65);
+    margin: 0;
+  }
+
+  /* ===== Login card ===== */
+  .login-card{
+    max-width: 430px;
+    margin: 0 auto;
+    opacity: 0;
+    transform: translateY(20px) scale(.97);
+    animation: cardIn .8s ease forwards;
+    animation-delay: .6s;
+  }
+
+  @keyframes cardIn{
+    to{
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .card{
+    border: 0;
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+
+  /* ===== Firma: fissa in basso + fade-in sincronizzato ===== */
+  .login-signature{
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 18px;
+    text-align: center;
+    font-size: .75rem;
+    color: #ccc;
+    opacity: 0;
+    transform: translateY(8px);
+    animation: signatureIn .8s ease forwards;
+    animation-delay: 1.1s; /* sincronizzata: dopo la card */
+    pointer-events: none;
+  }
+
+  @keyframes signatureIn{
+    to{
+      opacity: .6;
+      transform: translateY(0);
+    }
+  }
+
+  /* Accessibilità */
+  @media (prefers-reduced-motion: reduce){
+    .logo-container,
+    .title,
+    .login-card,
+    .login-signature{
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>
+
+<div class="login-scene">
+  <div class="stage">
+
+    <!-- LOGO -->
+    <div class="logo-container">
+      <img src="{{ url_for('static', filename='img/logo.png') }}"
+           alt="Logo azienda">
     </div>
+
+    <!-- TITOLO -->
+    <div class="title">
+      <h3 class="fw-bold">Apertura punto vendita</h3>
+      <p>Piattaforma di gestione progetto</p>
+    </div>
+
+    <!-- LOGIN -->
+    <div class="login-card">
+      <div class="card">
+        <div class="card-body p-4">
+
+          <form method="post">
+            <div class="mb-3">
+              <label class="form-label">Email</label>
+              <input name="email" type="email" class="form-control" required>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Password</label>
+              <input name="password" type="password" class="form-control" required>
+            </div>
+
+            <button class="btn btn-primary w-100">Accedi</button>
+          </form>
+
+          {% if self_registration_enabled %}
+          <hr>
+          <div class="text-center">
+            <a href="{{ url_for('register') }}"
+               class="btn btn-outline-primary w-100">
+              Registrati
+            </a>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+
+  </div>
 </div>
+
+<!-- FIRMA (fuori dalla stage, fissa in basso) -->
+<div class="login-signature">
+  Powered by <strong>Alessandro Camera</strong>
+</div>
+
 {% endblock %}

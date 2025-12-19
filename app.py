@@ -33,25 +33,21 @@ app.config["SECRET_KEY"] = "cambia_questa_chiave_in_produzione"
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-# File Gantt (come prima)
 GANTT_FILE = os.path.join(BASE_DIR, "Gantt modificato.xlsx")
-# Stato progetto (come prima)
 STATE_FILE = os.path.join(BASE_DIR, "project_state.json")
 
-# Database utenti (nuovo, cartella /database)
 DB_DIR = os.path.join(BASE_DIR, "database")
 os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.path.join(DB_DIR, "users.db")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + DB_PATH
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Self-registration attiva (puoi mettere False per disattivarla dopo la demo)
 SELF_REGISTRATION_ENABLED = True
 
 db = SQLAlchemy(app)
 
 login_manager = LoginManager(app)
-login_manager.login_view = "login"  # se non loggato → redirect a login
+login_manager.login_view = "login"
 
 # =====================================================
 #  RUOLI DI SISTEMA
@@ -109,7 +105,7 @@ FUNZIONI_AZIENDALI = [
 ]
 
 # =====================================================
-#  MODELLO USER (DB UTENTI)
+#  MODELLO USER
 # =====================================================
 
 class User(UserMixin, db.Model):
@@ -120,10 +116,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
 
-    # ruolo di sistema: ADMIN / SPONSOR / USER / AREA_MANAGER
     role = db.Column(db.String(20), nullable=False, default=ROLE_USER)
-
-    # funzione aziendale collegata al Gantt (può essere None per gli admin / capi area)
     function_name = db.Column(db.String(120), nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -147,23 +140,11 @@ class User(UserMixin, db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
 # =====================================================
 #  GANTT: CARICAMENTO TASK
 # =====================================================
 
 def load_gantt_tasks():
-    """
-    Legge il file Excel e lo trasforma in una lista di dizionari:
-
-    {
-        "id": int,
-        "task": str,
-        "function": str,
-        "days": int,
-        "offset": int  # giorni rispetto alla PRIMA ATTIVITÀ SPONSOR
-    }
-    """
     if not os.path.exists(GANTT_FILE):
         raise FileNotFoundError(f"File Gantt non trovato: {GANTT_FILE}")
 
@@ -181,7 +162,6 @@ def load_gantt_tasks():
     df["Inizio"] = pd.to_datetime(df["Inizio"])
     df["Numero di giorni necessari"] = df["Numero di giorni necessari"].astype(int)
 
-    # Base del progetto: prima attività SPONSOR
     sponsor_mask = df["Assegnata a (funzione aziendale)"] == "SPONSOR"
     if sponsor_mask.any():
         base_date = df.loc[sponsor_mask, "Inizio"].min()
@@ -192,14 +172,13 @@ def load_gantt_tasks():
     for idx, row in df.iterrows():
         start = row["Inizio"]
         if start < base_date:
-            # ignora eventuali attività "prima" del progetto
             continue
 
         task_name = str(row["Cosa fare per aprire il PDV"]).strip()
         funzione = str(row["Assegnata a (funzione aziendale)"]).strip()
         days = int(row["Numero di giorni necessari"])
 
-        offset = (start - base_date).days  # 0 = prima attività SPONSOR
+        offset = (start - base_date).days
 
         tasks.append(
             {
@@ -222,18 +201,83 @@ except Exception as e:
     print("ERRORE nel caricamento del Gantt:", e)
     GANTT_TASKS = []
 
+# =====================================================
+#  BACKWARD SCHEDULING: ancora alla task "Apertura"
+# =====================================================
+
+def get_total_plan_days():
+    return max((t["offset"] + t["days"]) for t in GANTT_TASKS) if GANTT_TASKS else 0
+
+
+def find_opening_task():
+    """
+    Trova la task di "Apertura punto vendita".
+    Se nel tuo Excel si chiama diversamente, aggiorna le KEYWORDS.
+    """
+    KEYWORDS = [
+        "apertura punto vendita",
+        "apertura pdv",
+        "apertura punto vendita (",
+        "apertura",
+    ]
+
+    for t in GANTT_TASKS:
+        name = (t.get("task") or "").strip().lower()
+        if any(k in name for k in KEYWORDS) and (t.get("function") == "SPONSOR"):
+            return t
+
+    # fallback: anche senza function sponsor
+    for t in GANTT_TASKS:
+        name = (t.get("task") or "").strip().lower()
+        if any(k in name for k in KEYWORDS):
+            return t
+
+    return None
+
+
+def compute_plan_start_from_opening_date(opening_date: date) -> date:
+    """
+    opening_date = data apertura inserita dallo sponsor (fine logica).
+    Calcola project_start (inizio calcolato) in modo che la task 'Apertura' finisca in opening_date.
+    """
+    opening_task = find_opening_task()
+    if not opening_task:
+        # fallback: comportamento precedente (ancora l'ultima attività reale)
+        total_days = get_total_plan_days()
+        return opening_date - timedelta(days=total_days - 1) if total_days else opening_date
+
+    # fine_task = project_start + offset + (days-1)  => vogliamo fine_task == opening_date
+    return opening_date - timedelta(days=(opening_task["offset"] + opening_task["days"] - 1))
+
+def compute_task_dates(project_start: date, opening_date: date, task: dict):
+    """
+    Calcola start/end di un task.
+    Se il task finirebbe dopo opening_date, lo forziamo a FINIRE in opening_date
+    mantenendo la durata (quindi lo spostiamo indietro).
+    """
+    start_date = project_start + timedelta(days=task["offset"])
+    end_date = start_date + timedelta(days=task["days"] - 1)
+
+    forced = False
+    if opening_date and end_date > opening_date:
+        forced = True
+        end_date = opening_date
+        start_date = end_date - timedelta(days=task["days"] - 1)
+
+    return start_date, end_date, forced
+
 
 # =====================================================
-#  STATO PROGETTO (COME PRIMA)
+#  STATO PROGETTO
 # =====================================================
 
 def load_state():
     """
-    Stato globale del progetto:
+    Stato globale:
     {
-      "project_start": "YYYY-MM-DD" oppure None,
-      "started": [task_id1, ...],
-      "completed": [task_id1, ...]
+      "project_start": "YYYY-MM-DD" oppure None,   # ORA SIGNIFICA: DATA APERTURA (fine logica)
+      "started": [...],
+      "completed": [...]
     }
     """
     if not os.path.exists(STATE_FILE):
@@ -254,15 +298,6 @@ def save_state(state):
 
 
 def get_task_status(task_id, started_ids, completed_ids, start_date=None, end_date=None):
-    """Restituisce lo stato logico dell'attività.
-
-    Stati possibili:
-    - "completata"
-    - "in_corso"
-    - "non_iniziata"
-    - "in_ritardo" (se non completata e oltre la data di fine)
-    """
-    # Stato base in funzione dei flag memorizzati
     if task_id in completed_ids:
         base_status = "completata"
     elif task_id in started_ids:
@@ -270,7 +305,6 @@ def get_task_status(task_id, started_ids, completed_ids, start_date=None, end_da
     else:
         base_status = "non_iniziata"
 
-    # Se non abbiamo le date, restituiamo lo stato base
     if start_date is None or end_date is None:
         return base_status
 
@@ -280,21 +314,11 @@ def get_task_status(task_id, started_ids, completed_ids, start_date=None, end_da
 
     return base_status
 
-
 # =====================================================
 #  UTILITY: CREAZIONE ADMIN INIZIALE
 # =====================================================
 
 def ensure_initial_admin():
-    """
-    Crea l'utente admin iniziale se non esiste.
-    Dati forniti da Alessandro:
-      - Nome: Alessandro Camera
-      - Email: Alessandro.camera95@gmail.com
-      - Password: Admin123!
-      - Ruolo: ADMIN
-      - Nessuna funzione aziendale (non appare nel Gantt)
-    """
     email_admin = "Alessandro.camera95@gmail.com"
 
     existing = User.query.filter_by(email=email_admin).first()
@@ -312,7 +336,6 @@ def ensure_initial_admin():
     db.session.add(admin)
     db.session.commit()
     print("Admin iniziale creato.")
-
 
 # =====================================================
 #  ROUTES: AUTENTICAZIONE
@@ -355,7 +378,6 @@ def logout():
     flash("Sei stato disconnesso.", "info")
     return redirect(url_for("login"))
 
-
 # =====================================================
 #  ADMIN: GESTIONE UTENTI
 # =====================================================
@@ -375,7 +397,6 @@ def admin_users():
         funzioni=FUNZIONI_AZIENDALI,
         self_registration_enabled=SELF_REGISTRATION_ENABLED,
     )
-
 
 # =====================================================
 #  ADMIN: CREA UTENTE
@@ -399,7 +420,6 @@ def admin_create_user():
         flash("Le password non coincidono.", "danger")
         return redirect(url_for("admin_users"))
 
-    # ADMIN e AREA_MANAGER non hanno funzione aziendale collegata
     if role in [ROLE_ADMIN, ROLE_AREA_MANAGER]:
         function_name = None
 
@@ -422,7 +442,6 @@ def admin_create_user():
     flash("Utente creato con successo.", "success")
     return redirect(url_for("admin_users"))
 
-
 # =====================================================
 #  ADMIN: MODIFICA UTENTE
 # =====================================================
@@ -441,11 +460,9 @@ def admin_update_user(user_id):
     role = request.form.get("role")
     function_name = request.form.get("function_name") or None
 
-    # ADMIN e AREA_MANAGER non hanno funzione aziendale
     if role in [ROLE_ADMIN, ROLE_AREA_MANAGER]:
         function_name = None
 
-    # Verifica email già usata da un altro utente
     existing = User.query.filter(
         User.email == email,
         User.id != user_id
@@ -454,7 +471,6 @@ def admin_update_user(user_id):
         flash("Email già usata da un altro utente.", "danger")
         return redirect(url_for("admin_users"))
 
-    # Aggiorna dati
     user.full_name = full_name
     user.email = email
     user.role = role
@@ -464,7 +480,6 @@ def admin_update_user(user_id):
 
     flash("Utente aggiornato con successo!", "success")
     return redirect(url_for("admin_users"))
-
 
 # =====================================================
 #  ADMIN: ELIMINA UTENTE
@@ -487,7 +502,6 @@ def delete_user(user_id):
 
     flash("Utente eliminato con successo.", "success")
     return redirect(url_for("admin_users"))
-
 
 # =====================================================
 #  ADMIN: TOGGLE SELF-REGISTRATION
@@ -551,7 +565,6 @@ def register():
 
     return render_template("register.html", funzioni=FUNZIONI_AZIENDALI)
 
-
 # =====================================================
 #  DASHBOARD (GANTT PERSONALE)
 # =====================================================
@@ -559,11 +572,9 @@ def register():
 @app.route("/dashboard", methods=["GET", "POST"])
 @login_required
 def dashboard():
-    # Admin puro senza funzione → pannello admin
     if current_user.is_admin and not current_user.function_name:
         return redirect(url_for("admin_users"))
 
-    # Capo Area → dashboard supervisione
     if current_user.role == ROLE_AREA_MANAGER:
         return redirect(url_for("dashboard_supervisione"))
 
@@ -571,7 +582,6 @@ def dashboard():
     funzione = current_user.function_name
 
     if not funzione:
-        # Nessuna funzione assegnata → niente task
         flash(
             "Non hai una funzione aziendale assegnata. "
             "Contatta un amministratore per completare il profilo.",
@@ -582,6 +592,7 @@ def dashboard():
             full_name=nome,
             function_name="(non assegnata)",
             project_start=None,
+            opening_date=None,
             tasks=[],
             calendario=[],
             attivita_oggi=[],
@@ -591,23 +602,28 @@ def dashboard():
         )
 
     state = load_state()
-    project_start_str = state.get("project_start")
+    opening_str = state.get("project_start")  # ORA: data apertura
     started_ids = set(state.get("started", []))
     completed_ids = set(state.get("completed", []))
 
     project_start = None
-    if project_start_str:
-        project_start = datetime.strptime(project_start_str, "%Y-%m-%d").date()
+    opening_date = None
 
-    # SPONSOR può modificare la data di inizio progetto
+    if opening_str:
+        opening_date = datetime.strptime(opening_str, "%Y-%m-%d").date()
+        project_start = compute_plan_start_from_opening_date(opening_date)
+
+    # SPONSOR: salva data apertura
     if request.method == "POST" and current_user.is_sponsor:
         new_date_str = request.form.get("project_start")
         try:
-            _ = datetime.strptime(new_date_str, "%Y-%m-%d").date()
+            opening_date = datetime.strptime(new_date_str, "%Y-%m-%d").date()
             state["project_start"] = new_date_str
             save_state(state)
-            project_start = datetime.strptime(new_date_str, "%Y-%m-%d").date()
-            flash("Data di inizio progetto aggiornata.", "success")
+
+            project_start = compute_plan_start_from_opening_date(opening_date)
+
+            flash("Data apertura punto vendita aggiornata.", "success")
         except Exception:
             flash("Data non valida.", "danger")
 
@@ -618,13 +634,11 @@ def dashboard():
     prossima_data = None
 
     if project_start:
-        # Attività solo della funzione dell'utente
         user_tasks = [t for t in GANTT_TASKS if t["function"] == funzione]
 
         cal_map = defaultdict(list)
         for t in user_tasks:
-            start_date = project_start + timedelta(days=t["offset"])
-            end_date = start_date + timedelta(days=t["days"] - 1)
+            start_date, end_date, forced = compute_task_dates(project_start, opening_date, t)
 
             status = get_task_status(
                 t["id"],
@@ -645,7 +659,6 @@ def dashboard():
             }
             user_tasks_with_dates.append(info)
 
-            # Popoliamo il calendario giorno per giorno
             for i in range(t["days"]):
                 giorno = start_date + timedelta(days=i)
                 cal_map[giorno].append(info)
@@ -653,15 +666,11 @@ def dashboard():
         for d in sorted(cal_map.keys()):
             calendario.append({"date": d, "tasks": cal_map[d]})
 
-        # ==============================
-        #     CALCOLO ATTIVITÀ OGGI
-        #   (solo NON completate)
-        # ==============================
         oggi = date.today()
 
         for t in user_tasks_with_dates:
             if t["completed"]:
-                continue  # ignoriamo quelle già completate
+                continue
 
             if t["start_date"] <= oggi <= t["end_date"]:
                 attivita_oggi.append(t)
@@ -676,7 +685,8 @@ def dashboard():
         "dashboard.html",
         full_name=nome,
         function_name=funzione,
-        project_start=project_start,
+        project_start=project_start,   # inizio calcolato
+        opening_date=opening_date,     # data apertura
         tasks=user_tasks_with_dates,
         calendario=calendario,
         attivita_oggi=attivita_oggi,
@@ -685,9 +695,8 @@ def dashboard():
         is_sponsor=current_user.is_sponsor,
     )
 
-
 # =====================================================
-#  TOGGLE ATTIVITÀ (INIZIATA / COMPLETATA)
+#  TOGGLE TASK
 # =====================================================
 
 @app.route("/toggle_task", methods=["POST"])
@@ -708,15 +717,12 @@ def toggle_task():
         flash("Attività non trovata.", "danger")
         return redirect(url_for("dashboard"))
 
-    # Primo click -> iniziata
     if task_id not in started and task_id not in completed:
         started.add(task_id)
         if task["days"] == 1:
             completed.add(task_id)
-    # Secondo click -> completata
     elif task_id in started and task_id not in completed:
         completed.add(task_id)
-    # Terzo click -> reset
     elif task_id in completed:
         completed.discard(task_id)
         started.discard(task_id)
@@ -727,16 +733,15 @@ def toggle_task():
 
     return redirect(url_for("dashboard"))
 
-
 # =====================================================
-#  TIMELINE GLOBALE
+#  TIMELINE
 # =====================================================
 
 @app.route("/timeline")
 @login_required
 def timeline():
     state = load_state()
-    project_start_str = state.get("project_start")
+    opening_str = state.get("project_start")  # ORA: data apertura
 
     started_ids = set(state.get("started", []))
     completed_ids = set(state.get("completed", []))
@@ -744,25 +749,37 @@ def timeline():
     functions_list = sorted({t["function"] for t in GANTT_TASKS})
     selected_function = request.args.get("function", "")
 
-    if not project_start_str:
+    sort_by = request.args.get("sort_by", "start_date")
+    sort_dir = request.args.get("sort_dir", "asc")
+
+    ALLOWED_SORT = {"days", "start_date", "end_date", "status"}
+    if sort_by not in ALLOWED_SORT:
+        sort_by = "start_date"
+
+    reverse = sort_dir == "desc"
+
+    if not opening_str:
         return render_template(
             "timeline.html",
             project_start=None,
+            opening_date=None,
             tasks=[],
             functions_list=functions_list,
             selected_function=selected_function,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
             date=date,
         )
 
-    project_start = datetime.strptime(project_start_str, "%Y-%m-%d").date()
+    opening_date = datetime.strptime(opening_str, "%Y-%m-%d").date()
+    project_start = compute_plan_start_from_opening_date(opening_date)
 
     tasks_with_dates = []
     for t in GANTT_TASKS:
         if selected_function and t["function"] != selected_function:
             continue
 
-        start_date = project_start + timedelta(days=t["offset"])
-        end_date = start_date + timedelta(days=t["days"] - 1)
+        start_date, end_date, forced = compute_task_dates(project_start, opening_date, t)
 
         status = get_task_status(
             t["id"],
@@ -785,43 +802,42 @@ def timeline():
             }
         )
 
-    tasks_with_dates.sort(key=lambda x: (x["function"], x["start_date"], x["id"]))
+    tasks_with_dates.sort(key=lambda x: x[sort_by], reverse=reverse)
 
     return render_template(
         "timeline.html",
         project_start=project_start,
+        opening_date=opening_date,
         tasks=tasks_with_dates,
         functions_list=functions_list,
         selected_function=selected_function,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         date=date,
     )
 
-
 # =====================================================
-#  DASHBOARD SUPERVISIONE (SPONSOR + CAPO AREA)
+#  SUPERVISIONE (SPONSOR + AREA_MANAGER)
 # =====================================================
 
 @app.route("/supervisione", methods=["GET"])
 @login_required
 def dashboard_supervisione():
-    # Solo Sponsor e Capi Area possono accedere
     if not (current_user.is_sponsor or current_user.role == ROLE_AREA_MANAGER):
         flash("Non hai i permessi per accedere alla supervisione.", "danger")
         return redirect(url_for("dashboard"))
 
     state = load_state()
-    project_start_str = state.get("project_start")
+    opening_str = state.get("project_start")  # ORA: data apertura
     started_ids = set(state.get("started", []))
     completed_ids = set(state.get("completed", []))
 
-        # Mappa: funzione aziendale -> elenco nominativi che la ricoprono
     owners_map = defaultdict(list)
     for u in User.query.filter(User.function_name.isnot(None)).all():
         owners_map[u.function_name].append(u.full_name)
 
-
-    if not project_start_str:
-        flash("Lo SPONSOR non ha ancora impostato la data di inizio progetto.", "warning")
+    if not opening_str:
+        flash("Lo SPONSOR non ha ancora impostato la data di apertura del punto vendita.", "warning")
         return render_template(
             "sponsor_dashboard.html",
             project_start=None,
@@ -832,18 +848,16 @@ def dashboard_supervisione():
             kpis=None,
         )
 
-    project_start = datetime.strptime(project_start_str, "%Y-%m-%d").date()
+    opening_date = datetime.strptime(opening_str, "%Y-%m-%d").date()
+    project_start = compute_plan_start_from_opening_date(opening_date)
 
-    # Calcoliamo date di inizio/fine e mappa giorni -> attività
     tasks_with_dates = []
     day_map = defaultdict(list)
 
     for t in GANTT_TASKS:
-        start_date = project_start + timedelta(days=t["offset"])
-        end_date = start_date + timedelta(days=t["days"] - 1)
+        start_date, end_date, forced = compute_task_dates(project_start, opening_date, t)
         status = get_task_status(t["id"], started_ids, completed_ids)
 
-        # Ricaviamo il/i responsabile/i per la funzione aziendale di questo task
         owner_list = owners_map.get(t["function"], [])
         responsabile = ", ".join(owner_list) if owner_list else None
 
@@ -860,18 +874,14 @@ def dashboard_supervisione():
         }
         tasks_with_dates.append(info)
 
-        # tutti i giorni in cui l'attività è "attiva"
         d = start_date
         while d <= end_date:
             day_map[d].append(info)
             d += timedelta(days=1)
 
-    if not tasks_with_dates:
-        project_end = project_start
-    else:
-        project_end = max(t["end_date"] for t in tasks_with_dates)
+    # fine reale = max end_date; (potrebbe essere > opening_date se il Gantt ha task post-apertura)
+    project_end = max((t["end_date"] for t in tasks_with_dates), default=project_start)
 
-    # Data selezionata dal calendario
     sel_str = request.args.get("date")
     today = date.today()
     selected_date = None
@@ -882,14 +892,7 @@ def dashboard_supervisione():
         except Exception:
             selected_date = None
 
-    # Se la data selezionata non è valida o fuori range, scegliamo:
-    # - oggi se sta nel range
-    # - altrimenti la data di inizio progetto
-    if (
-        not selected_date
-        or selected_date < project_start
-        or selected_date > project_end
-    ):
+    if (not selected_date) or selected_date < project_start or selected_date > project_end:
         if project_start <= today <= project_end:
             selected_date = today
         else:
@@ -897,7 +900,6 @@ def dashboard_supervisione():
 
     activities_for_selected = day_map.get(selected_date, [])
 
-    # Costruiamo l'elenco di TUTTI i giorni del progetto, con stato
     days_list = []
     d = project_start
     while d <= project_end:
@@ -912,27 +914,18 @@ def dashboard_supervisione():
                 day_status = "in_ritardo"
             elif "in_corso" in statuses:
                 day_status = "in_corso"
-            else:  # tutte non_iniziata
+            else:
                 if d < today:
                     day_status = "in_ritardo"
                 else:
                     day_status = "non_iniziata"
 
-        days_list.append(
-            {
-                "date": d,
-                "status": day_status,
-                "has_tasks": bool(entries),
-            }
-        )
+        days_list.append({"date": d, "status": day_status, "has_tasks": bool(entries)})
         d += timedelta(days=1)
 
-    # KPI globali
     total_tasks = len(GANTT_TASKS)
     completed_tasks = len(completed_ids)
     in_progress_tasks = len(started_ids - completed_ids)
-
-    # Task "non iniziati" = totali - (completati + in corso)
     not_started_tasks = total_tasks - completed_tasks - in_progress_tasks
     if not_started_tasks < 0:
         not_started_tasks = 0
@@ -956,7 +949,6 @@ def dashboard_supervisione():
         activities_for_selected=activities_for_selected,
         kpis=kpis,
     )
-
 
 # =====================================================
 #  AVVIO APP

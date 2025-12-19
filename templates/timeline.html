@@ -5,11 +5,29 @@
 
 <h2 class="mb-4">Timeline generale</h2>
 
-{% if project_start is none %}
+{% if opening_date is none %}
     <div class="alert alert-warning">
-        Lo SPONSOR non ha ancora impostato la data di inizio progetto.
+        Lo SPONSOR non ha ancora impostato la Data di apertura del punto vendita.
     </div>
 {% else %}
+{% macro sort_link(label, col) %}
+  {% if sort_by == col %}
+    {% set next_dir = 'desc' if sort_dir == 'asc' else 'asc' %}
+  {% else %}
+    {% set next_dir = 'asc' %}
+  {% endif %}
+
+  <a class="text-white text-decoration-none"
+     href="{{ url_for('timeline',
+                      function=selected_function,
+                      sort_by=col,
+                      sort_dir=next_dir) }}">
+    {{ label }}
+    {% if sort_by == col %}
+      {{ '▲' if sort_dir == 'asc' else '▼' }}
+    {% endif %}
+  </a>
+{% endmacro %}
 
 <!-- FILTRO PER FUNZIONE AZIENDALE -->
 <form method="get" class="mb-4">
@@ -37,7 +55,9 @@
 </form>
 
 <p class="text-muted mb-4">
-    Data inizio progetto: <strong>{{ project_start.strftime('%d/%m/%Y') }}</strong>
+    Data apertura punto vendita: <strong>{{ opening_date.strftime('%d/%m/%Y') }}</strong>
+    <br>
+    Inizio attività (calcolato): <strong>{{ project_start.strftime('%d/%m/%Y') }}</strong>
 </p>
 
 <!-- TABELLA TIMELINE -->
@@ -46,10 +66,10 @@
         <tr>
             <th>Funzione</th>
             <th>Attività</th>
-            <th>Durata</th>
-            <th>Inizio</th>
-            <th>Fine</th>
-            <th>Stato</th>
+            <th>{{ sort_link('Durata', 'days') }}</th>
+            <th>{{ sort_link('Inizio', 'start_date') }}</th>
+            <th>{{ sort_link('Fine', 'end_date') }}</th>
+            <th>{{ sort_link('Stato', 'status') }}</th>
         </tr>
     </thead>
 

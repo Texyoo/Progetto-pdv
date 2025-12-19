@@ -43,14 +43,18 @@
 {% if is_sponsor %}
     <div class="card mb-4">
         <div class="card-header">
-            Impostazione data inizio progetto (solo SPONSOR)
+            Impostazione Data apertura punto vendita (solo SPONSOR)
         </div>
         <div class="card-body">
             <form method="post" class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label">Data inizio progetto</label>
-                    <input type="date" name="project_start" class="form-control"
-                           value="{{ project_start.strftime('%Y-%m-%d') if project_start }}">
+                    <label class="form-label">Data apertura punto vendita</label>
+                    <input
+                        type="date"
+                        name="project_start"
+                        class="form-control"
+                        value="{{ opening_date.strftime('%Y-%m-%d') if opening_date }}"
+                    >
                 </div>
                 <div class="col-md-3 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary">
@@ -58,7 +62,8 @@
                     </button>
                 </div>
             </form>
-            {% if not project_start %}
+
+            {% if not opening_date %}
                 <p class="text-muted mt-3">
                     Nessuna data impostata. Fino a quando non imposti una data, le altre funzioni non vedranno il piano.
                 </p>
@@ -66,16 +71,16 @@
         </div>
     </div>
 {% else %}
-    {% if not project_start %}
+    {% if not opening_date %}
         <div class="alert alert-warning">
-            In attesa che la funzione <strong>SPONSOR</strong> definisca la data di inizio progetto.
+            In attesa che la funzione <strong>SPONSOR</strong> definisca la data di apertura del punto vendita.
         </div>
     {% endif %}
 {% endif %}
 
-{% if project_start %}
+{% if opening_date %}
     <p class="text-muted mb-4">
-        Data di inizio progetto: <strong>{{ project_start.strftime('%d/%m/%Y') }}</strong>
+        Data apertura punto vendita: <strong>{{ opening_date.strftime('%d/%m/%Y') }}</strong>
     </p>
 
     <h4 class="mb-3">Attività della tua funzione</h4>
@@ -184,7 +189,6 @@
                                         In ritardo
                                     {% endif %}
                                 </span>
-
                                 </li>
                             {% endfor %}
                         </ul>
