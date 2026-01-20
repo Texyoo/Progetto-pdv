@@ -45,6 +45,14 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 SELF_REGISTRATION_ENABLED = True
 
 db = SQLAlchemy(app)
+class ProjectState(db.Model):
+    __tablename__ = "project_state"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # JSON come testo (compatibile con SQLite)
+    data_json = db.Column(db.Text, nullable=False, default='{"project_start": null, "started": [], "completed": []}')
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -271,48 +279,71 @@ def compute_task_dates(project_start: date, opening_date: date, task: dict):
 #  STATO PROGETTO
 # =====================================================
 
+DEFAULT_STATE = {"project_start": None, "started": [], "completed": []}
+
 def load_state():
-    """
-    Stato globale:
-    {
-      "project_start": "YYYY-MM-DD" oppure None,   # ORA SIGNIFICA: DATA APERTURA (fine logica)
-      "started": [...],
-      "completed": [...]
-    }
-    """
-    if not os.path.exists(STATE_FILE):
-        return {"project_start": None, "started": [], "completed": []}
+    row = ProjectState.query.get(1)
+    if not row:
+        return DEFAULT_STATE.copy()
+
     try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            data.setdefault("started", [])
-            data.setdefault("completed", [])
-            return data
+        data = json.loads(row.data_json) if row.data_json else {}
     except Exception:
-        return {"project_start": None, "started": [], "completed": []}
+        data = {}
+
+    data.setdefault("project_start", None)
+    data.setdefault("started", [])
+    data.setdefault("completed", [])
+    return data
 
 
 def save_state(state):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+    state.setdefault("project_start", None)
+    state.setdefault("started", [])
+    state.setdefault("completed", [])
 
+    row = ProjectState.query.get(1)
+    if not row:
+        row = ProjectState(id=1)
+        db.session.add(row)
+
+    row.data_json = json.dumps(state, ensure_ascii=False)
+    db.session.commit()
 
 def get_task_status(task_id, started_ids, completed_ids, start_date=None, end_date=None):
-    if task_id in completed_ids:
-        base_status = "completata"
-    elif task_id in started_ids:
-        base_status = "in_corso"
-    else:
-        base_status = "non_iniziata"
+    """
+    Calcola lo stato del task.
+    - completed -> completata
+    - started -> in_corso
+    - altrimenti -> non_iniziata
+    - se non completata e end_date passata -> in_ritardo
+    """
+    # Normalizza task_id per evitare mismatch int/str
+    task_id_str = str(task_id)
+    started = set(str(x) for x in (started_ids or []))
+    completed = set(str(x) for x in (completed_ids or []))
 
-    if start_date is None or end_date is None:
-        return base_status
+    if task_id_str in completed:
+        return "completata"
+    if task_id_str in started:
+        return "in_corso"
 
-    today = date.today()
-    if base_status != "completata" and today > end_date:
-        return "in_ritardo"
+    # Se c'è una scadenza e non è completato, valuta ritardo
+    if end_date:
+        try:
+            today = date.today()
+            if isinstance(end_date, datetime):
+                end_d = end_date.date()
+            else:
+                end_d = end_date
 
-    return base_status
+            if end_d < today:
+                return "in_ritardo"
+        except Exception:
+            pass
+
+    return "non_iniziata"
+
 
 # =====================================================
 #  UTILITY: CREAZIONE ADMIN INIZIALE
