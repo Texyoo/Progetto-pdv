@@ -25,6 +25,15 @@ import json
 from collections import defaultdict
 
 # =====================================================
+#  RUOLI DI SISTEMA
+# =====================================================
+
+ROLE_ADMIN = "ADMIN"
+ROLE_SPONSOR = "SPONSOR"
+ROLE_USER = "USER"
+ROLE_AREA_MANAGER = "AREA_MANAGER"
+
+# =====================================================
 #  CONFIGURAZIONE BASE APP
 # =====================================================
 
@@ -45,26 +54,119 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 SELF_REGISTRATION_ENABLED = True
 
 db = SQLAlchemy(app)
-class ProjectState(db.Model):
-    __tablename__ = "project_state"
-
-    id = db.Column(db.Integer, primary_key=True)
-    # JSON come testo (compatibile con SQLite)
-    data_json = db.Column(db.Text, nullable=False, default='{"project_start": null, "started": [], "completed": []}')
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
+class User(UserMixin, db.Model):
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    full_name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+
+    role = db.Column(db.String(50), default="USER")
+    function_name = db.Column(db.String(120), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password: str):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        return check_password_hash(self.password_hash, password)
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == ROLE_ADMIN
+
+    @property
+    def is_sponsor(self) -> bool:
+        return self.role == ROLE_SPONSOR
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+class ProjectState(db.Model):
+    __tablename__ = "project_state"
+
+    id = db.Column(db.Integer, primary_key=True)
+    data_json = db.Column(
+        db.Text,
+        nullable=False,
+        default='{"project_start": null, "started": [], "completed": []}'
+    )
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+def ensure_initial_admin():
+    email_admin = "Alessandro.camera95@gmail.com"
+
+    existing = User.query.filter_by(email=email_admin).first()
+    if existing:
+        print("Admin iniziale già presente.")
+        return
+
+    admin = User(
+        full_name="Alessandro Camera",
+        email=email_admin,
+        role=ROLE_ADMIN,
+        function_name=None,
+    )
+    admin.set_password("Admin123!")
+    db.session.add(admin)
+    db.session.commit()
+    print("Admin iniziale creato.")
+with app.app_context():
+    db.create_all()
+    ensure_initial_admin()
+
+
 # =====================================================
-#  RUOLI DI SISTEMA
+#  ROUTES: AUTENTICAZIONE
 # =====================================================
 
-ROLE_ADMIN = "ADMIN"
-ROLE_SPONSOR = "SPONSOR"
-ROLE_USER = "USER"
-ROLE_AREA_MANAGER = "AREA_MANAGER"
+@app.route("/")
+def index():
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login"))
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+
+        user = User.query.filter_by(email=email).first()
+        if user and user.check_password(password):
+            login_user(user)
+            flash("Accesso eseguito correttamente.", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Credenziali non valide.", "danger")
+
+    return render_template(
+        "login.html",
+        self_registration_enabled=SELF_REGISTRATION_ENABLED
+    )
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash("Sei stato disconnesso.", "info")
+    return redirect(url_for("login"))
+
+
+
+
+
 
 # =====================================================
 #  FUNZIONI AZIENDALI (per il Gantt)
@@ -116,37 +218,7 @@ FUNZIONI_AZIENDALI = [
 #  MODELLO USER
 # =====================================================
 
-class User(UserMixin, db.Model):
-    __tablename__ = "users"
 
-    id = db.Column(db.Integer, primary_key=True)
-    full_name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
-
-    role = db.Column(db.String(20), nullable=False, default=ROLE_USER)
-    function_name = db.Column(db.String(120), nullable=True)
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def set_password(self, password: str):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password: str) -> bool:
-        return check_password_hash(self.password_hash, password)
-
-    @property
-    def is_admin(self) -> bool:
-        return self.role == ROLE_ADMIN
-
-    @property
-    def is_sponsor(self) -> bool:
-        return self.role == ROLE_SPONSOR
-
-
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
 
 # =====================================================
 #  GANTT: CARICAMENTO TASK
@@ -344,70 +416,6 @@ def get_task_status(task_id, started_ids, completed_ids, start_date=None, end_da
 
     return "non_iniziata"
 
-
-# =====================================================
-#  UTILITY: CREAZIONE ADMIN INIZIALE
-# =====================================================
-
-def ensure_initial_admin():
-    email_admin = "Alessandro.camera95@gmail.com"
-
-    existing = User.query.filter_by(email=email_admin).first()
-    if existing:
-        print("Admin iniziale già presente.")
-        return
-
-    admin = User(
-        full_name="Alessandro Camera",
-        email=email_admin,
-        role=ROLE_ADMIN,
-        function_name=None,
-    )
-    admin.set_password("Admin123!")
-    db.session.add(admin)
-    db.session.commit()
-    print("Admin iniziale creato.")
-
-# =====================================================
-#  ROUTES: AUTENTICAZIONE
-# =====================================================
-
-@app.route("/")
-def index():
-    if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
-    return redirect(url_for("login"))
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
-
-    if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
-
-        user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password):
-            login_user(user)
-            flash("Accesso eseguito correttamente.", "success")
-            return redirect(url_for("dashboard"))
-        else:
-            flash("Credenziali non valide.", "danger")
-
-    return render_template(
-        "login.html",
-        self_registration_enabled=SELF_REGISTRATION_ENABLED
-    )
-
-
-@app.route("/logout")
-@login_required
-def logout():
-    logout_user()
-    flash("Sei stato disconnesso.", "info")
-    return redirect(url_for("login"))
 
 # =====================================================
 #  ADMIN: GESTIONE UTENTI
@@ -980,14 +988,16 @@ def dashboard_supervisione():
         activities_for_selected=activities_for_selected,
         kpis=kpis,
     )
+if __name__ == "__main__":
+    print("Avvio app PREMIUM con Gantt collegato e gestione utenti...")
+    print("ROUTES REGISTRATE:")
+for r in app.url_map.iter_rules():
+    print(r)
+
+    app.run(debug=True)
 
 # =====================================================
 #  AVVIO APP
 # =====================================================
 
-if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-        ensure_initial_admin()
-    print("Avvio app PREMIUM con Gantt collegato e gestione utenti...")
-    app.run(debug=True)
+
