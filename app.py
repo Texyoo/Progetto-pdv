@@ -988,11 +988,16 @@ def dashboard_supervisione():
         activities_for_selected=activities_for_selected,
         kpis=kpis,
     )
+# =====================================================
+#  AVVIO APP (solo locale)
+# =====================================================
 if __name__ == "__main__":
     print("Avvio app PREMIUM con Gantt collegato e gestione utenti...")
+
+    # Debug utile solo in locale
     print("ROUTES REGISTRATE:")
-for r in app.url_map.iter_rules():
-    print(r)
+    for r in app.url_map.iter_rules():
+        print(r)
 
     app.run(debug=True)
 
