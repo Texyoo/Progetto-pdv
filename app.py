@@ -48,12 +48,30 @@ STATE_FILE = os.path.join(BASE_DIR, "project_state.json")
 DB_DIR = os.path.join(BASE_DIR, "database")
 os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.path.join(DB_DIR, "users.db")
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + DB_PATH
+
+# =====================================================
+#  DATABASE: Postgres su Render (persistente) / SQLite in locale
+# =====================================================
+db_url = os.environ.get("DATABASE_URL")
+
+if db_url:
+    # Render a volte fornisce postgres://, SQLAlchemy preferisce postgresql://
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + DB_PATH
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 SELF_REGISTRATION_ENABLED = True
 
 db = SQLAlchemy(app)
+
+# Debug temporaneo: conferma DB in uso nei logs (puoi poi rimuoverlo)
+with app.app_context():
+    print("DB_IN_USO:", db.engine.url)
+
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -355,32 +373,40 @@ DEFAULT_STATE = {"project_start": None, "started": [], "completed": []}
 
 def load_state():
     row = ProjectState.query.get(1)
-    if not row:
+    if not row or not row.data_json:
+        print("LOAD_STATE: row missing -> returning DEFAULT_STATE")
         return DEFAULT_STATE.copy()
 
     try:
-        data = json.loads(row.data_json) if row.data_json else {}
-    except Exception:
-        data = {}
+        data = json.loads(row.data_json)
+    except Exception as e:
+        print("LOAD_STATE: json error -> returning DEFAULT_STATE | err:", e)
+        return DEFAULT_STATE.copy()
 
     data.setdefault("project_start", None)
     data.setdefault("started", [])
     data.setdefault("completed", [])
+    print("LOAD_STATE: project_start =", data.get("project_start"))
     return data
 
 
 def save_state(state):
+    # Normalizza sempre chiavi attese
     state.setdefault("project_start", None)
     state.setdefault("started", [])
     state.setdefault("completed", [])
 
     row = ProjectState.query.get(1)
     if not row:
-        row = ProjectState(id=1)
+        row = ProjectState(id=1, data_json=json.dumps(state, ensure_ascii=False))
         db.session.add(row)
+        print("SAVE_STATE: creating row id=1")
+    else:
+        row.data_json = json.dumps(state, ensure_ascii=False)
+        print("SAVE_STATE: updating row id=1")
 
-    row.data_json = json.dumps(state, ensure_ascii=False)
     db.session.commit()
+    print("SAVE_STATE: committed | project_start =", state.get("project_start"))
 
 def get_task_status(task_id, started_ids, completed_ids, start_date=None, end_date=None):
     """
